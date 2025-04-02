@@ -1,0 +1,38 @@
+name: daikan-ai-api
+on:
+  push:
+    branches:
+      - staging
+      
+jobs:
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.BACKEND_SECRET_KEY }}
+          known_hosts: ${{ secrets.BACKEND_SERVER_KNOWN_HOSTS }}
+    
+      - run: rsync -av ./ ${SERVER_USER}@${SERVER_IP}:~/daikan-ai-api/
+        env:
+          SERVER_USER: ${{ secrets.BACKEND_SERVER_USER }}
+          SERVER_IP: ${{ secrets.BACKEND_SERVER_IP }}
+          
+      - run: ssh ${SERVER_USER}@${SERVER_IP} sudo systemctl restart uvicorn.service
+        env:
+          SERVER_USER: ${{ secrets.BACKEND_SERVER_USER }}
+          SERVER_IP: ${{ secrets.BACKEND_SERVER_IP }}
+      
+      - run: sleep 60
+
+      - run: ssh ${SERVER_USER}@${SERVER_IP} journalctl -u uvicorn.service -n 100
+        env:
+          SERVER_USER: ${{ secrets.BACKEND_SERVER_USER }}
+          SERVER_IP: ${{ secrets.BACKEND_SERVER_IP }}
+          
+      - run: ssh ${SERVER_USER}@${SERVER_IP} systemctl status uvicorn.service
+        env:
+          SERVER_USER: ${{ secrets.BACKEND_SERVER_USER }}
+          SERVER_IP: ${{ secrets.BACKEND_SERVER_IP }}
