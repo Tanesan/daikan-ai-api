@@ -8,6 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import xgboost as xgb
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_dir)
 from model_evaluation import load_data, preprocess_data, train_and_evaluate_models, visualize_results, compare_with_baseline
 
 def main():
