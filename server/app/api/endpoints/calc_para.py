@@ -11,7 +11,7 @@ import boto3
 from typing import Dict
 from datetime import datetime
 from io import BytesIO
-from app.models.led_output import PerImageParameter, ImageData, WholeImageParameter
+from app.models.led_output import PerImageParameter, ImageData, WholeImageParameter, WholeImageParameterWithLED
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -60,5 +60,32 @@ async def calc_para_and_led(data: ImageData):
 
     except Exception as e:
         logger.error(f"Error calc Para: {e}")
+        logger.exception(e)
+        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/calc_para_with_led/", response_model=WholeImageParameterWithLED)
+async def calc_para_with_led(data: ImageData):
+    """
+    セグメンテーションとLEDの数を同時に計算するエンドポイント
+
+    data: 画像データと画像の高さ(mm)
+    """
+    try:
+        if data.url:
+            image = download_image_from_s3(data.url)
+            if image is None:
+                raise HTTPException(status_code=400, detail="Failed to download image from S3")
+        else:
+            image_bytes = base64.b64decode(data.base64_image)
+            with open("tmp.png", 'bw') as f3:
+                f3.write(image_bytes)
+            image = cv2.imread("tmp.png")
+
+        image, binary = read_image(image)
+        if image is None:
+            raise HTTPException(status_code=400, detail="Invalid image data")
+        return calc_thin(image, binary, data.whole_hight_mm, data.url, predict_led=True)
+
+    except Exception as e:
+        logger.error(f"Error calc Para with LED: {e}")
         logger.exception(e)
         raise HTTPException(status_code=500, detail=str(e))
