@@ -23,7 +23,7 @@ def get_segment_models_mapping(df):
     """
     セグメントに基づくモデルマッピングを生成
     """
-    is_huge = ((df['Area'] > 25000) & (df['zunguri'] >= 20)) | (df['Area'] > 50000)
+    is_huge = ((df['Area'] > 20000) & (df['zunguri'] >= 15)) | (df['Area'] > 40000)
     is_neon = (df['distance_average'] <= 6.3) & ~is_huge
     
     segments = []
@@ -39,7 +39,7 @@ def get_specific_models_for_large_signs(df):
     """
     大型看板用の特別なセグメント
     """
-    is_huge = ((df['Area'] > 25000) & (df['zunguri'] >= 20)) | (df['Area'] > 50000)
+    is_huge = ((df['Area'] > 20000) & (df['zunguri'] >= 15)) | (df['Area'] > 40000)
     df_huge = df[is_huge].copy()
     
     if len(df_huge) > 30:  # 十分なデータがある場合

@@ -1,4 +1,5 @@
 import os
+import sys
 import pandas as pd
 import numpy as np
 from ast import literal_eval
@@ -24,6 +25,21 @@ mape_scores = {}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+improved_models_path = os.path.join(current_dir, 'led_database', 'improved_models')
+sys.path.append(improved_models_path)
+
+try:
+    from improved_models.enhanced_features import enhance_features, enhance_skeleton_topology
+    from improved_models.data_segmentation import segment_data
+    from improved_models.model_architecture import predict_with_ensemble
+    from improved_models.large_signs_handler import enhance_large_sign_features
+    IMPROVED_MODELS_AVAILABLE = True
+    logger.info("改良されたモデルをロードしました")
+except ImportError as e:
+    logger.warning(f"改良されたモデルのインポートに失敗しました: {e}")
+    IMPROVED_MODELS_AVAILABLE = False
 def get_cols_pitch_for_uniform(dist_val, area):
     dist_val *= 2
     """
@@ -280,6 +296,12 @@ def predict_led(area, peri, distance, skeleton_length, scale_ratio, intersection
         'intersection6': intersection6,
         'endpoint': endpoint,
     }])
+    
+    if IMPROVED_MODELS_AVAILABLE:
+        improved_prediction = predict_with_improved_models(df)
+        if improved_prediction is not None:
+            logger.info("改良されたモデルで予測しました")
+            return round(improved_prediction)
 
     if condition.name.lower() == "uramen":
         df = preprocess(df)
@@ -322,14 +344,14 @@ def predict_led(area, peri, distance, skeleton_length, scale_ratio, intersection
         df["ruled_number_15"] = df["Area"] / 15 / 15
         df["adj"] = df['heuristic_cols'] * df['heuristic_pitch']
         condition = (df['distance_average'] <= 6.3) & ~(
-                ((df['Area'] > 25000) & (df['zunguri'] >= 20)) |
-                (df['Area'] > 50000)
+                ((df['Area'] > 20000) & (df['zunguri'] >= 15)) |  # Area基準を25000→20000に、zunguri基準を20→15に緩和
+                (df['Area'] > 40000)  # Area単体の基準も50000→40000に緩和
         )
         df_neon = df[condition].copy()
         df_hyomen = df[~condition].copy()
         is_so_huge = (
-                             (df_hyomen['Area'] > 25000) & (df_hyomen['zunguri'] >= 20)
-                     ) | (df_hyomen['Area'] > 50000)
+                             (df_hyomen['Area'] > 20000) & (df_hyomen['zunguri'] >= 15)
+                     ) | (df_hyomen['Area'] > 40000)
         df_huge_hyomen = df_hyomen[is_so_huge].copy()
         df_hyomen = df_hyomen[~is_so_huge].copy()
         y_pred = None
@@ -367,6 +389,50 @@ def predict_led(area, peri, distance, skeleton_length, scale_ratio, intersection
             print(df)
             return 0
     return round(y_pred[0])
+
+def predict_with_improved_models(df):
+    """
+    改良されたモデルを使用してLEDの数を予測する関数
+    """
+    if not IMPROVED_MODELS_AVAILABLE:
+        logger.warning("改良されたモデルが利用できないため、従来のモデルで予測します")
+        return None
+    
+    try:
+        df_enhanced = enhance_features(df)
+        df_enhanced = enhance_skeleton_topology(df_enhanced)
+        
+        segments = segment_data(df_enhanced)
+        
+        predictions = None
+        
+        if 'large_signs' in segments and not segments['large_signs'].empty:
+            large_df = enhance_large_sign_features(segments['large_signs'])
+            large_model_path = os.path.join(current_dir, 'led_database', 'improved_models', 'models', 'large_sign_model.json')
+            
+            if os.path.exists(large_model_path):
+                model = xgb.Booster()
+                model.load_model(large_model_path)
+                
+                X_large = large_df[[col for col in large_df.columns if col != 'led' and col != 'index']]
+                dmatrix = xgb.DMatrix(X_large)
+                predictions = model.predict(dmatrix)
+        
+        elif 'normal_signs' in segments and not segments['normal_signs'].empty:
+            normal_df = segments['normal_signs']
+            ensemble_model_path = os.path.join(current_dir, 'led_database', 'improved_models', 'models', 'ensemble_model.pkl')
+            
+            if os.path.exists(ensemble_model_path):
+                model = joblib.load(ensemble_model_path)
+                
+                X_normal = normal_df[[col for col in normal_df.columns if col != 'led' and col != 'index']]
+                predictions = model.predict(X_normal)
+        
+        return predictions[0] if predictions is not None else None
+    except Exception as e:
+        logger.error(f"改良モデルでの予測中にエラーが発生しました: {e}")
+        logger.exception(e)
+        return None
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 main_path = os.path.join(ROOT_DIR, 'led_database')
