@@ -11,32 +11,45 @@ def enhance_distance_features(df):
     - スケールされた距離特徴
     - グラディエント特徴
     """
-    if 'distance_std' not in df.columns:
-        df['distance_std'] = df['distance'].apply(lambda x: np.std(x) if len(x) > 0 else np.nan)
-    if 'distance_count' not in df.columns:
-        df['distance_count'] = df['distance'].apply(len)
-    if 'distance_sum' not in df.columns:
-        df['distance_sum'] = df['distance'].apply(sum)
+    def parse_distance(x):
+        if isinstance(x, str) and x.startswith('['):
+            try:
+                return eval(x)  # Convert string representation of list to actual list
+            except:
+                return []
+        elif isinstance(x, list):
+            return x
+        else:
+            return []
     
-    df['distance_10%'] = df['distance'].apply(lambda x: np.percentile(x, 10) if len(x) > 0 else np.nan)
-    df['distance_25%'] = df['distance'].apply(lambda x: np.percentile(x, 25) if len(x) > 0 else np.nan)
-    df['distance_75%'] = df['distance'].apply(lambda x: np.percentile(x, 75) if len(x) > 0 else np.nan)
-    df['distance_90%'] = df['distance'].apply(lambda x: np.percentile(x, 90) if len(x) > 0 else np.nan)
+    distances = df['distance'].apply(parse_distance)
+    
+    if 'distance_std' not in df.columns:
+        df['distance_std'] = distances.apply(lambda x: np.std(x) if len(x) > 0 else np.nan)
+    if 'distance_count' not in df.columns:
+        df['distance_count'] = distances.apply(len)
+    if 'distance_sum' not in df.columns:
+        df['distance_sum'] = distances.apply(lambda x: sum(x) if len(x) > 0 else 0)
+    
+    df['distance_10%'] = distances.apply(lambda x: np.percentile(x, 10) if len(x) > 0 else np.nan)
+    df['distance_25%'] = distances.apply(lambda x: np.percentile(x, 25) if len(x) > 0 else np.nan)
+    df['distance_75%'] = distances.apply(lambda x: np.percentile(x, 75) if len(x) > 0 else np.nan)
+    df['distance_90%'] = distances.apply(lambda x: np.percentile(x, 90) if len(x) > 0 else np.nan)
     df['distance_iqr'] = df['distance_75%'] - df['distance_25%']
     
-    df['distance_skew'] = df['distance'].apply(lambda x: stats.skew(x) if len(x) > 2 else np.nan)
-    df['distance_kurtosis'] = df['distance'].apply(lambda x: stats.kurtosis(x) if len(x) > 2 else np.nan)
+    df['distance_skew'] = distances.apply(lambda x: stats.skew(x) if len(x) > 2 else np.nan)
+    df['distance_kurtosis'] = distances.apply(lambda x: stats.kurtosis(x) if len(x) > 2 else np.nan)
     
     df['distance_area_ratio'] = df['distance_sum'] / (df['Area'] + 1e-5)
     df['distance_peri_ratio'] = df['distance_sum'] / (df['Peri'] + 1e-5)
     df['distance_skeleton_ratio'] = df['distance_sum'] / (df['skeleton_length'] + 1e-5)
     
-    df['distance_gradient'] = df['distance'].apply(lambda x: 
+    df['distance_gradient'] = distances.apply(lambda x: 
         np.mean(np.abs(np.diff(sorted(x)))) if len(x) > 1 else np.nan)
-    df['distance_max_gradient'] = df['distance'].apply(lambda x: 
+    df['distance_max_gradient'] = distances.apply(lambda x: 
         np.max(np.abs(np.diff(sorted(x)))) if len(x) > 1 else np.nan)
     
-    df['distance_unique_ratio'] = df['distance'].apply(lambda x: 
+    df['distance_unique_ratio'] = distances.apply(lambda x: 
         len(set(x)) / (len(x) + 1e-5) if len(x) > 0 else np.nan)
     
     def outlier_ratio(x):
@@ -49,7 +62,7 @@ def enhance_distance_features(df):
         outliers = [val for val in x if val < lower_bound or val > upper_bound]
         return len(outliers) / len(x)
     
-    df['distance_outlier_ratio'] = df['distance'].apply(outlier_ratio)
+    df['distance_outlier_ratio'] = distances.apply(outlier_ratio)
     
     return df
 
