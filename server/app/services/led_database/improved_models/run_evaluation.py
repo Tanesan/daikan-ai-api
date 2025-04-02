@@ -9,7 +9,11 @@ import matplotlib.pyplot as plt
 import xgboost as xgb
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+sys.path.insert(0, current_dir)
+
+import model_evaluation
 from model_evaluation import load_data, preprocess_data, train_and_evaluate_models, visualize_results, compare_with_baseline
 
 def main():
