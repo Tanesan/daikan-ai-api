@@ -64,10 +64,18 @@ def split_large_signs_by_complexity(df_huge):
     
     return df_huge
 
-def build_specialized_large_sign_model(df_huge, X_cols, y_col='led'):
+def build_specialized_large_sign_model(df_huge, y_col='led'):
     """
     大型看板専用のモデルを構築
     """
+    numeric_cols = df_huge.select_dtypes(include=['number']).columns.tolist()
+    
+    if y_col in numeric_cols:
+        numeric_cols.remove(y_col)
+    
+    exclude_cols = ['cluster', 'anomaly', 'is_density_outlier', 'size_segment', 'complexity_segment', 'large_sign_segment']
+    X_cols = [col for col in numeric_cols if col not in exclude_cols]
+    
     X = df_huge[X_cols]
     y = df_huge[y_col]
     

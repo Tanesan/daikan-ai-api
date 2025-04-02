@@ -41,24 +41,31 @@ def build_segment_model(X_train, y_train, X_val, y_val, segment_name, feature_se
     各セグメント用のモデルを構築
     feature_selection: 特徴量選択を行うかどうか
     """
+    numeric_cols = X_train.select_dtypes(include=['number']).columns
+    X_train = X_train[numeric_cols]
+    X_val = X_val[numeric_cols]
+    
+    X_train = X_train.fillna(X_train.median())
+    X_val = X_val.fillna(X_train.median())  # 訓練データの中央値で検証データも埋める
+    
+    print(f"数値型特徴量の数: {len(numeric_cols)}")
+    
     if feature_selection and X_train.shape[1] > 5:  # 十分な特徴量がある場合
-        selector = SelectFromModel(LassoCV(cv=5, random_state=42))
-        selector.fit(X_train, y_train)
-        selected_features = X_train.columns[selector.get_support()]
+        xgb_model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, random_state=42)
+        xgb_model.fit(X_train, y_train)
+        
+        importance = xgb_model.feature_importances_
+        indices = np.argsort(importance)[-min(20, len(importance)):]  # 上位20個または全部
+        selected_features = X_train.columns[indices]
         
         if len(selected_features) < 3:  # 最低限の特徴量数を確保
-            if hasattr(selector.estimator_, 'coef_'):
-                importance = np.abs(selector.estimator_.coef_)
-                indices = np.argsort(importance)[-5:]
-                selected_features = X_train.columns[indices]
-            else:
-                correlations = []
-                for col in X_train.columns:
-                    corr = abs(X_train[col].corr(y_train))
-                    correlations.append(corr)
-                
-                indices = np.argsort(correlations)[-5:]
-                selected_features = X_train.columns[indices]
+            correlations = []
+            for col in X_train.columns:
+                corr = abs(X_train[col].corr(y_train))
+                correlations.append(corr)
+            
+            indices = np.argsort(correlations)[-5:]
+            selected_features = X_train.columns[indices]
         
         X_train_selected = X_train[selected_features]
         X_val_selected = X_val[selected_features]
@@ -104,6 +111,13 @@ def build_ensemble_model(X_train, y_train, X_val, y_val, n_folds=5):
     """
     交差検証ベースのスタッキングアンサンブルモデルを構築
     """
+    numeric_cols = X_train.select_dtypes(include=['number']).columns
+    X_train = X_train[numeric_cols]
+    X_val = X_val[numeric_cols]
+    
+    X_train = X_train.fillna(X_train.median())
+    X_val = X_val.fillna(X_train.median())
+    
     base_params = {
         'tree_method': 'auto',
         'learning_rate': 0.1,

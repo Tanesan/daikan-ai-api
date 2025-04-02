@@ -110,11 +110,12 @@ def train_and_evaluate_models(df, is_neon=False):
         
         if huge_idx_train.sum() >= 10 and huge_idx_test.sum() >= 5:
             print("\n大型看板専用モデルの構築:")
-            huge_model, huge_importance = build_specialized_large_sign_model(
-                pd.concat([X_train[huge_idx_train], X_test[huge_idx_test]]),
-                feature_cols,
-                pd.concat([y_train[huge_idx_train], y_test[huge_idx_test]])
-            )
+            X_huge = pd.concat([X_train[huge_idx_train], X_test[huge_idx_test]])
+            y_huge = pd.concat([y_train[huge_idx_train], y_test[huge_idx_test]])
+            df_huge = X_huge.copy()
+            df_huge['led'] = y_huge
+            
+            huge_model, huge_importance = build_specialized_large_sign_model(df_huge)
             segment_models["huge_specialized"] = huge_model
             segment_features["huge_specialized"] = feature_cols
     
@@ -193,7 +194,10 @@ def evaluate_models(models, features, X_test, y_test, test_df):
     if "ensemble" in models:
         ensemble_model = models["ensemble"]
         
-        y_pred_ensemble = ensemble_model.predict(X_test)
+        X_test_numeric = X_test.select_dtypes(include=['number'])
+        X_test_numeric = X_test_numeric.fillna(X_test_numeric.median())
+        
+        y_pred_ensemble = ensemble_model.predict(X_test_numeric)
         
         mape_ensemble = mean_absolute_percentage_error(y_test, y_pred_ensemble)
         rmse_ensemble = np.sqrt(mean_squared_error(y_test, y_pred_ensemble))
