@@ -28,7 +28,11 @@ def load_data(file_path, is_neon=False):
     df = pd.read_csv(file_path, sep='\t')
     
     if 'distance' in df.columns:
-        df['distance_average'] = df['distance'].apply(lambda x: np.mean(x) if len(x) > 0 else np.nan)
+        df['distance_average'] = df['distance'].apply(
+            lambda x: np.mean(eval(x)) if isinstance(x, str) and x.startswith('[') and len(eval(x)) > 0 
+            else np.mean(x) if isinstance(x, list) and len(x) > 0 
+            else np.nan
+        )
     
     print(f"データ読み込み完了: {file_path}, レコード数: {len(df)}")
     return df
