@@ -12,6 +12,11 @@ import os
 import cv2
 import numpy as np
 import boto3
+import pandas as pd
+import xgboost as xgb
+from sklearn.preprocessing import StandardScaler
+import joblib
+import sys
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -128,7 +133,20 @@ def get_nesting_level(index, hierarchy):
     # ループが1回回った時点で(= 親が -1 を見つけた時点で) level=1 となるため、-1 する
     return level - 1
 
-def calc_thin(image, binary, whole_height_mm, url) -> WholeImageParameter:
+def calc_thin(image, binary, whole_height_mm, url, predict_led=False) -> WholeImageParameter:
+    """
+    画像からパラメータを抽出し、オプションでLEDの数を予測する関数
+    
+    Args:
+        image: 入力画像
+        binary: 二値化された画像
+        whole_height_mm: 画像の実際の高さ（mm）
+        url: 画像のURL
+        predict_led: LEDの数を予測するかどうか
+    
+    Returns:
+        WholeImageParameter: 抽出されたパラメータ
+    """
     # find the contours (tree is good for our proj)
     data = {}
     result_information_area_peri = []
@@ -228,7 +246,7 @@ def calc_thin(image, binary, whole_height_mm, url) -> WholeImageParameter:
         url = save_image_to_s3(overlay_image, url)
     else:
         url = ""
-    return WholeImageParameter(
+    whole_image_params = WholeImageParameter(
         height=math.floor(whole_h * scale_ratio),
         width=math.floor(whole_w * scale_ratio),
         url=url,
@@ -236,9 +254,55 @@ def calc_thin(image, binary, whole_height_mm, url) -> WholeImageParameter:
         scale_ratio_for_frontend_scale=1,
         perimages=reset_index_data
     )
+    
+    if predict_led and IMPROVED_MODELS_AVAILABLE:
+        try:
+            features_df = extract_features_from_params(reset_index_data)
+            
+            led_predictions = predict_led_with_improved_models(features_df)
+            
+            if led_predictions:
+                from app.models.led_output import WholeImageParameterWithLED, PerImageParameterWithLED, LuminousModel
+                
+                perimages_with_led = {}
+                for key, param in reset_index_data.items():
+                    if key in led_predictions:
+                        perimages_with_led[key] = PerImageParameterWithLED(
+                            **param.dict(),
+                            luminous_model=LuminousModel.HYOMEN.value,  # デフォルトは表面発光
+                            led=led_predictions[key]
+                        )
+                
+                return WholeImageParameterWithLED(
+                    height=math.floor(whole_h * scale_ratio),
+                    width=math.floor(whole_w * scale_ratio),
+                    scale_ratio=scale_ratio,
+                    scale_ratio_for_frontend_scale=1,
+                    perimages=perimages_with_led
+                )
+        except Exception as e:
+            logger.error(f"LED予測中にエラーが発生しました: {e}")
+            logger.exception(e)
+    
+    return whole_image_params
 
 from io import BytesIO
 from urllib.parse import urlparse, unquote
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+improved_models_path = os.path.join(current_dir, 'led_database', 'improved_models')
+sys.path.append(improved_models_path)
+
+try:
+    from improved_models.enhanced_features import enhance_features, enhance_skeleton_topology
+    from improved_models.data_segmentation import segment_data
+    from improved_models.model_architecture import create_ensemble_model, predict_with_ensemble
+    from improved_models.large_signs_handler import enhance_large_sign_features, build_specialized_large_sign_model
+    IMPROVED_MODELS_AVAILABLE = True
+    logger.info("改良されたモデルをロードしました")
+except ImportError as e:
+    logger.warning(f"改良されたモデルのインポートに失敗しました: {e}")
+    IMPROVED_MODELS_AVAILABLE = False
 def save_image_to_s3(image, s3_path):
     try:
         # URL解析でパス部分を抽出
@@ -372,3 +436,86 @@ def count_endpoints(thinned_image):
                     endpoints += 1
 
     return endpoints
+
+def extract_features_from_params(perimages):
+    """
+    PerImageParameterから特徴量を抽出する関数
+    """
+    features_list = []
+    
+    for key, params in perimages.items():
+        features = {
+            'index': int(key),
+            'Area': params.area,
+            'Peri': params.peri,
+            'skeleton_length': params.skeleton_length,
+            'intersection3': params.intersection_count3,
+            'intersection4': params.intersection_count4,
+            'intersection5': params.intersection_count5,
+            'intersection6': params.intersection_count6,
+            'endpoint': params.endpoints_count
+        }
+        
+        if hasattr(params, 'distance') and params.distance:
+            distances = params.distance
+            features['distance_average'] = sum(distances) / len(distances) if distances else 0
+            features['distance_min'] = min(distances) if distances else 0
+            features['distance_max'] = max(distances) if distances else 0
+            features['distance_median'] = sorted(distances)[len(distances)//2] if distances else 0
+            
+            if distances:
+                from collections import Counter
+                counter = Counter(distances)
+                features['distance_mode'] = counter.most_common(1)[0][0]
+            else:
+                features['distance_mode'] = 0
+        
+        features_list.append(features)
+    
+    return pd.DataFrame(features_list)
+
+def predict_led_with_improved_models(df):
+    """
+    改良されたモデルを使用してLEDの数を予測する関数
+    """
+    if not IMPROVED_MODELS_AVAILABLE:
+        logger.warning("改良されたモデルが利用できないため、予測できません")
+        return None
+    
+    df_enhanced = enhance_features(df)
+    
+    df_enhanced = enhance_skeleton_topology(df_enhanced)
+    
+    segments = segment_data(df_enhanced)
+    
+    predictions = {}
+    
+    if 'large_signs' in segments and not segments['large_signs'].empty:
+        large_df = enhance_large_sign_features(segments['large_signs'])
+        large_model_path = os.path.join(current_dir, 'led_database', 'improved_models', 'models', 'large_sign_model.json')
+        
+        if os.path.exists(large_model_path):
+            model = xgb.Booster()
+            model.load_model(large_model_path)
+            
+            X_large = large_df[[col for col in large_df.columns if col != 'led' and col != 'index']]
+            dmatrix = xgb.DMatrix(X_large)
+            large_preds = model.predict(dmatrix)
+            
+            for i, idx in enumerate(large_df['index']):
+                predictions[str(idx)] = round(large_preds[i])
+    
+    if 'normal_signs' in segments and not segments['normal_signs'].empty:
+        normal_df = segments['normal_signs']
+        ensemble_model_path = os.path.join(current_dir, 'led_database', 'improved_models', 'models', 'ensemble_model.pkl')
+        
+        if os.path.exists(ensemble_model_path):
+            model = joblib.load(ensemble_model_path)
+            
+            X_normal = normal_df[[col for col in normal_df.columns if col != 'led' and col != 'index']]
+            normal_preds = model.predict(X_normal)
+            
+            for i, idx in enumerate(normal_df['index']):
+                predictions[str(idx)] = round(normal_preds[i])
+    
+    return predictions
