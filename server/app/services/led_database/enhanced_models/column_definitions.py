@@ -1,3 +1,9 @@
+"""
+Column definitions module for LED prediction models.
+
+This module defines standard column lists and provides functionality to
+standardize DataFrame columns for consistent model training and prediction.
+"""
 import pandas as pd
 
 FEATURE_COLUMNS = [
@@ -41,14 +47,21 @@ REQUIRED_COLUMNS = [
 
 def standardize_dataframe(df, for_training=False):
     """
-    データフレームの列を標準化する
+    Standardize DataFrame columns for consistent model training and prediction.
+    
+    Ensures all required columns are present and adds default values for
+    missing feature columns. For training data, also ensures the 'led' column
+    is present.
     
     Args:
-        df: 入力データフレーム
-        for_training: 学習用かどうか（Trueの場合、'led'列も含める）
+        df: Input DataFrame with sign parameters
+        for_training: Whether the DataFrame is for training (True) or prediction (False)
     
     Returns:
-        標準化されたデータフレーム
+        DataFrame with standardized columns
+        
+    Raises:
+        ValueError: If required columns are missing or 'led' column is missing for training
     """
     missing_columns = [col for col in REQUIRED_COLUMNS if col not in df.columns]
     if missing_columns:
@@ -72,18 +85,18 @@ def standardize_dataframe(df, for_training=False):
 
 def get_feature_columns():
     """
-    特徴量の列名リストを取得
+    Get the list of feature column names.
     
     Returns:
-        特徴量の列名リスト
+        List of feature column names used in the models
     """
     return FEATURE_COLUMNS.copy()
 
 def get_required_columns():
     """
-    必須の列名リストを取得
+    Get the list of required column names.
     
     Returns:
-        必須の列名リスト
+        List of column names that are required for prediction
     """
     return REQUIRED_COLUMNS.copy()
