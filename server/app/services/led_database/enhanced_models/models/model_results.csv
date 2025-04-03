@@ -1,0 +1,9 @@
+segment,mape,model_path,scaler_path
+very_large_special,0.22714387619606938,../enhanced_models/models/very_large_special_model.json,
+hyomen_large_complex,0.08649800396343324,../enhanced_models/models/hyomen_large_complex_model.json,
+hyomen_large_simple,0.07398251737793551,../enhanced_models/models/hyomen_large_simple_model.json,
+neon_medium_complex,0.09553557513458104,../enhanced_models/models/neon_medium_complex_model.json,
+hyomen_medium_complex,0.12595779613788624,../enhanced_models/models/hyomen_medium_complex_model.json,
+hyomen_medium_simple,0.07451793806949407,../enhanced_models/models/hyomen_medium_simple_model.json,
+hyomen_small_complex,0.10768735646353106,../enhanced_models/models/hyomen_small_complex_model.json,
+neon_small_complex,0.10564879911774323,../enhanced_models/models/neon_small_complex_model.json,
