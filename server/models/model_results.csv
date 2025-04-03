@@ -1,0 +1,3 @@
+segment,mape,model_path
+very_large_special,0.22,models/very_large_special_model.json
+hyomen_large_complex,0.08,models/hyomen_large_complex_model.json
