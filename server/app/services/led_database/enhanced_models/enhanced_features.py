@@ -1,9 +1,27 @@
+"""
+Enhanced feature engineering module for LED prediction models.
+
+This module provides specialized feature engineering for large signs
+to improve prediction accuracy for signs requiring many LEDs.
+"""
 import numpy as np
 import pandas as pd
 
 def enhance_features_for_large_signs(df):
     """
-    大型看板向けの特徴量エンジニアリング
+    Perform feature engineering specifically for large signs.
+    
+    Calculates various ratios and estimates based on sign parameters:
+    - Area/skeleton and perimeter/skeleton ratios
+    - Estimated width and number of LED columns
+    - Pitch estimation based on sign properties
+    - Correction factors for branching complexity
+    
+    Args:
+        df: DataFrame containing sign parameters
+        
+    Returns:
+        DataFrame with additional engineered features
     """
     df['area_per_skeleton'] = df['Area'] / df['skeleton_length']
     df['peri_per_skeleton'] = df['Peri'] / df['skeleton_length']

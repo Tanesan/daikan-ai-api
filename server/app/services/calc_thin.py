@@ -445,6 +445,7 @@ def count_endpoints(thinned_image):
 def extract_features_from_params(perimages):
     """
     PerImageParameterから特徴量を抽出する関数
+    改良モデルとの互換性のために必要な列を追加
     """
     features_list = []
     
@@ -474,6 +475,17 @@ def extract_features_from_params(perimages):
                 features['distance_mode'] = counter.most_common(1)[0][0]
             else:
                 features['distance_mode'] = 0
+                
+            features['distance'] = str(distances)
+        else:
+            features['distance_average'] = 0
+            features['distance_min'] = 0
+            features['distance_max'] = 0
+            features['distance_median'] = 0
+            features['distance_mode'] = 0
+            features['distance'] = '[]'
+        
+        features['zunguri'] = features['Area'] / (features['Peri'] + 1e-5)
         
         features_list.append(features)
     

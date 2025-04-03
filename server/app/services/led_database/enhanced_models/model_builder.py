@@ -6,16 +6,17 @@ from sklearn.metrics import mean_absolute_percentage_error
 import os
 import joblib
 import matplotlib.pyplot as plt
+from app.services.led_database.enhanced_models.column_definitions import standardize_dataframe
 
 def weighted_rmse_obj(preds, dtrain):
     """
-    RMSEをベースにしつつ、予測値 < 実測値（residual < 0）の場合にペナルティを大きくする。
-    特に大型看板の過少予測を避けるために、ペナルティを強化。
+    Custom objective function based on RMSE that increases penalty when prediction < actual (residual < 0).
+    Enhances penalty to avoid underestimation of LED counts, especially for large signs.
     """
     labels = dtrain.get_label()
     residual = preds - labels
     
-    alpha = 5.0 * np.log1p(labels) / np.log1p(labels.mean())  # 値が大きいほどペナルティ大
+    alpha = 5.0 * np.log1p(labels) / np.log1p(labels.mean())  # Higher penalty for larger values
     
     weight = np.where(residual < 0, 1.0 + alpha, 1.0)
     
@@ -26,7 +27,17 @@ def weighted_rmse_obj(preds, dtrain):
 
 def build_model_for_segment(X_train, y_train, X_test, y_test, segment_name):
     """
-    特定のセグメント用のモデルを構築
+    Build a model for a specific segment.
+    
+    Args:
+        X_train: Training features
+        y_train: Training labels
+        X_test: Test features
+        y_test: Test labels
+        segment_name: Name of the segment
+        
+    Returns:
+        Trained model and MAPE score
     """
     if 'very_large' in segment_name:
         params = {
@@ -93,14 +104,14 @@ def build_model_for_segment(X_train, y_train, X_test, y_test, segment_name):
     y_pred = model.predict(dtest)
     
     mape = mean_absolute_percentage_error(y_test, y_pred)
-    print(f"{segment_name} モデルのMAPE: {mape:.4f}")
+    print(f"{segment_name} model MAPE: {mape:.4f}")
     
     plt.figure(figsize=(10, 6))
     plt.scatter(y_test, y_pred, alpha=0.5)
     plt.plot([0, max(y_test)], [0, max(y_test)], 'r--')
-    plt.xlabel('実測値')
-    plt.ylabel('予測値')
-    plt.title(f'{segment_name} モデル (MAPE: {mape:.4f})')
+    plt.xlabel('Actual')
+    plt.ylabel('Predicted')
+    plt.title(f'{segment_name} model (MAPE: {mape:.4f})')
     plt.grid(True)
     
     os.makedirs('../enhanced_models/plots', exist_ok=True)
@@ -110,7 +121,14 @@ def build_model_for_segment(X_train, y_train, X_test, y_test, segment_name):
 
 def train_all_models(df, output_dir='../enhanced_models/models'):
     """
-    全セグメント用のモデルをトレーニングして保存する
+    Train and save models for all segments.
+    
+    Args:
+        df: DataFrame containing features and labels
+        output_dir: Directory to save models
+        
+    Returns:
+        DataFrame with model results
     """
     os.makedirs(output_dir, exist_ok=True)
     
@@ -120,11 +138,13 @@ def train_all_models(df, output_dir='../enhanced_models/models'):
         segment_df = df[df['segment'] == segment].copy()
         
         if len(segment_df) < 30:
-            print(f"セグメント {segment} のデータ数が不足しています ({len(segment_df)} < 30)。スキップします。")
+            print(f"Segment {segment} has insufficient data ({len(segment_df)} < 30). Skipping.")
             continue
         
-        X = segment_df.drop(['led', 'pj', 'segment', 'distance', 'processed_path'], axis=1, errors='ignore')
-        y = segment_df['led']
+        standardized_df = standardize_dataframe(segment_df, for_training=True)
+        
+        X = standardized_df.drop(['led'], axis=1)
+        y = standardized_df['led']
         
         X = X.select_dtypes(include=['number'])
         
@@ -144,9 +164,9 @@ def train_all_models(df, output_dir='../enhanced_models/models'):
         })
         model_results = pd.concat([model_results, new_row], ignore_index=True)
         
-        print(f"セグメント {segment} のモデルを保存しました: {model_path}")
+        print(f"Saved model for segment {segment}: {model_path}")
     
     model_results.to_csv(os.path.join(output_dir, 'model_results.csv'), index=False)
-    print(f"モデル結果を保存しました: {os.path.join(output_dir, 'model_results.csv')}")
+    print(f"Saved model results: {os.path.join(output_dir, 'model_results.csv')}")
     
     return model_results

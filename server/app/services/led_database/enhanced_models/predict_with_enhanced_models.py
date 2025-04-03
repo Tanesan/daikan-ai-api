@@ -1,10 +1,17 @@
+"""
+Enhanced LED prediction module using segmented models.
+
+This module provides functionality to predict LED counts using specialized models
+for different sign segments, with fallback mechanisms for robustness.
+"""
 import os
+import logging
 import pandas as pd
 import numpy as np
 import xgboost as xgb
-import logging
 from app.services.led_database.enhanced_models.data_segmentation import segment_by_size_and_complexity
 from app.services.led_database.enhanced_models.enhanced_features import enhance_features_for_large_signs
+from app.services.led_database.enhanced_models.column_definitions import standardize_dataframe
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,7 +25,10 @@ class EnhancedLEDPredictor:
     
     def load_models(self):
         """
-        ディレクトリから全てのモデルを読み込む
+        Load all models from the models directory.
+        
+        Reads the model_results.csv file to get model paths and loads each model.
+        Logs warnings for missing model files.
         """
         try:
             results_path = os.path.join(self.models_dir, 'model_results.csv')
@@ -33,21 +43,46 @@ class EnhancedLEDPredictor:
                         model = xgb.Booster()
                         model.load_model(model_path)
                         self.models[segment] = model
-                        logger.info(f"モデルをロードしました: {segment}")
+                        logger.info(f"Model loaded: {segment}")
                     else:
-                        logger.warning(f"モデルファイルが見つかりません: {model_path}")
+                        logger.warning(f"Model file not found: {model_path}")
                 
-                logger.info(f"合計 {len(self.models)} モデルをロードしました")
+                logger.info(f"Total {len(self.models)} models loaded")
             else:
-                logger.warning(f"モデル結果ファイルが見つかりません: {results_path}")
-        except Exception as e:
-            logger.error(f"モデルのロード中にエラーが発生しました: {e}")
+                logger.warning(f"Model results file not found: {results_path}")
+        except Exception as exc:
+            logger.error(f"Error occurred while loading models: {exc}")
     
     def predict(self, features_df):
         """
-        適切なモデルを使用してLED数を予測
+        Predict LED counts using appropriate models.
+        
+        Args:
+            features_df: DataFrame containing sign features
+            
+        Returns:
+            Dictionary mapping sign indices to predicted LED counts
         """
         try:
+            if not self.models:
+                logger.warning("No models loaded. Using default prediction.")
+                predictions = {}
+                for idx, row in features_df.iterrows():
+                    area = row['Area']
+                    skeleton_length = row['skeleton_length']
+                    
+                    led_count = int(skeleton_length / 15)  # Assuming 15mm pitch
+                    
+                    if area > 40000:
+                        led_count *= 2.8
+                    elif area > 20000:
+                        led_count *= 1.5
+                    
+                    key = str(int(row.get('index', idx)))
+                    predictions[key] = max(1, round(led_count))
+                
+                return predictions
+            
             if 'zunguri' not in features_df.columns:
                 features_df['zunguri'] = features_df['Area'] / (features_df['Peri'] + 1e-5)
             
@@ -64,10 +99,27 @@ class EnhancedLEDPredictor:
                     model = self.models[segment]
                 else:
                     segment = self._find_closest_segment(segment)
+                    if segment == "default" or segment not in self.models:
+                        area = row['Area']
+                        skeleton_length = row['skeleton_length']
+                        led_count = int(skeleton_length / 15)
+                        
+                        if area > 40000:
+                            led_count *= 2.8
+                        elif area > 20000:
+                            led_count *= 1.5
+                        
+                        key = str(int(row.get('index', idx)))
+                        predictions[key] = max(1, round(led_count))
+                        continue
+                    
                     model = self.models[segment]
                 
-                features = row.drop(['segment', 'distance', 'size_segment', 'complexity', 
-                                     'emission_type'], errors='ignore')
+                row_df = pd.DataFrame([row])
+                standardized_row = standardize_dataframe(row_df)
+                
+                features = standardized_row.drop(['segment', 'distance', 'size_segment', 'complexity', 
+                                     'emission_type'], axis=1, errors='ignore')
                 features = features.select_dtypes(include=['number'])
                 
                 dfeatures = xgb.DMatrix([features])
@@ -75,27 +127,38 @@ class EnhancedLEDPredictor:
                 
                 if 'very_large' in segment:
                     if prediction > 200:
-                        prediction *= 2.8  # 実測値の約1/3との報告に基づく補正
+                        prediction *= 2.8  # Correction based on report of actual values being about 3x predictions
                 elif 'large' in segment:
                     if prediction > 100:
-                        prediction *= 1.5  # 大型看板に対する補正
+                        prediction *= 1.5  # Correction for large signs
                 
                 key = str(int(row.get('index', idx)))
                 predictions[key] = round(prediction)
             
             return predictions
         
-        except Exception as e:
-            logger.error(f"予測中にエラーが発生しました: {e}")
+        except Exception as exc:
+            logger.error(f"Error occurred during prediction: {exc}")
+            logger.exception(exc)
             return {}
     
     def _find_closest_segment(self, segment):
         """
-        指定されたセグメントに最も近いセグメントを見つける
+        Find the closest matching segment from available models.
+        
+        Args:
+            segment: The segment name to find a match for
+            
+        Returns:
+            The name of the closest matching segment or "default"
         """
         parts = segment.split('_')
         
         available_segments = list(self.models.keys())
+        
+        if not available_segments:
+            logger.warning("No available models. Using default value.")
+            return "default"
         
         if len(parts) >= 3:
             emission_type = parts[0]
@@ -117,7 +180,13 @@ predictor = None
 
 def predict_led_with_enhanced_models(features_df):
     """
-    改良されたモデルを使用してLEDの数を予測
+    Predict LED counts using enhanced models.
+    
+    Args:
+        features_df: DataFrame containing sign features
+        
+    Returns:
+        Dictionary mapping sign indices to predicted LED counts
     """
     global predictor
     

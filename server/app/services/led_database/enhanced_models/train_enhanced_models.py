@@ -10,6 +10,7 @@ sys.path.insert(0, current_dir)
 from data_segmentation import segment_by_size_and_complexity
 from enhanced_features import enhance_features_for_large_signs
 from model_builder import train_all_models
+from column_definitions import standardize_dataframe
 
 def preprocess_data(df):
     """
@@ -53,6 +54,8 @@ def main():
     df_all = segment_by_size_and_complexity(df_all)
     
     df_all = enhance_features_for_large_signs(df_all)
+    
+    df_all = standardize_dataframe(df_all, for_training=True)
     
     segment_counts = df_all['segment'].value_counts()
     print("\n各セグメントのデータ数:")
