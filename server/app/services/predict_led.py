@@ -1,4 +1,5 @@
 import os
+import sys
 import pandas as pd
 import numpy as np
 from ast import literal_eval
@@ -24,6 +25,16 @@ mape_scores = {}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+improved_models_path = os.path.join(current_dir, 'led_database', 'improved_models')
+minimal_model_path = os.path.join(improved_models_path, 'models', 'minimal_filtered_model.json')
+
+MINIMAL_MODEL_AVAILABLE = os.path.exists(minimal_model_path)
+if MINIMAL_MODEL_AVAILABLE:
+    logger.info("最小限フィルタリングモデルが利用可能です")
+else:
+    logger.warning("最小限フィルタリングモデルが見つかりません")
 def get_cols_pitch_for_uniform(dist_val, area):
     dist_val *= 2
     """
@@ -266,6 +277,42 @@ def load_model_scaler(condition):
 
 
 # Web APIで予測を行う関数
+def predict_with_minimal_model(df):
+    """
+    最小限フィルタリングモデルを使用してLEDの数を予測する関数
+    """
+    if not MINIMAL_MODEL_AVAILABLE:
+        logger.warning("最小限フィルタリングモデルが利用できないため、従来のモデルで予測します")
+        return None
+    
+    try:
+        df_enhanced = df.copy()
+        
+        df_enhanced['area_per_skeleton'] = df_enhanced['Area'] / df_enhanced['skeleton_length']
+        df_enhanced['peri_per_skeleton'] = df_enhanced['Peri'] / df_enhanced['skeleton_length']
+        df_enhanced['area_per_peri'] = df_enhanced['Area'] / df_enhanced['Peri']
+        
+        df_enhanced['led_density_area'] = df_enhanced.get('led', 0) / df_enhanced['Area']
+        df_enhanced['led_density_skeleton'] = df_enhanced.get('led', 0) / df_enhanced['skeleton_length']
+        df_enhanced['led_density_peri'] = df_enhanced.get('led', 0) / df_enhanced['Peri']
+        
+        df_enhanced['area_skeleton_ratio'] = df_enhanced['Area'] / (df_enhanced['skeleton_length'] ** 2)
+        df_enhanced['peri_area_ratio'] = df_enhanced['Peri'] / np.sqrt(df_enhanced['Area'])
+        
+        model = xgb.XGBRegressor()
+        model.load_model(minimal_model_path)
+        
+        features = [col for col in df_enhanced.columns if col not in ['led', 'index', 'pj', 'distance']]
+        
+        X = df_enhanced[features]
+        prediction = model.predict(X)
+        
+        return round(prediction[0])
+    except Exception as e:
+        logger.error(f"最小限フィルタリングモデルでの予測中にエラーが発生しました: {e}")
+        logger.exception(e)
+        return None
+
 def predict_led(area, peri, distance, skeleton_length, scale_ratio, intersection3, intersection4, intersection5,
                 intersection6, endpoint, condition):
     # テストデータの準備
@@ -280,6 +327,12 @@ def predict_led(area, peri, distance, skeleton_length, scale_ratio, intersection
         'intersection6': intersection6,
         'endpoint': endpoint,
     }])
+    
+    if MINIMAL_MODEL_AVAILABLE:
+        minimal_prediction = predict_with_minimal_model(df)
+        if minimal_prediction is not None:
+            logger.info("最小限フィルタリングモデルで予測しました")
+            return minimal_prediction
 
     if condition.name.lower() == "uramen":
         df = preprocess(df)
@@ -322,14 +375,14 @@ def predict_led(area, peri, distance, skeleton_length, scale_ratio, intersection
         df["ruled_number_15"] = df["Area"] / 15 / 15
         df["adj"] = df['heuristic_cols'] * df['heuristic_pitch']
         condition = (df['distance_average'] <= 6.3) & ~(
-                ((df['Area'] > 25000) & (df['zunguri'] >= 20)) |
-                (df['Area'] > 50000)
+                ((df['Area'] > 20000) & (df['zunguri'] >= 15)) |  # Area基準を25000→20000に、zunguri基準を20→15に緩和
+                (df['Area'] > 40000)  # Area単体の基準も50000→40000に緩和
         )
         df_neon = df[condition].copy()
         df_hyomen = df[~condition].copy()
         is_so_huge = (
-                             (df_hyomen['Area'] > 25000) & (df_hyomen['zunguri'] >= 20)
-                     ) | (df_hyomen['Area'] > 50000)
+                             (df_hyomen['Area'] > 20000) & (df_hyomen['zunguri'] >= 15)
+                     ) | (df_hyomen['Area'] > 40000)
         df_huge_hyomen = df_hyomen[is_so_huge].copy()
         df_hyomen = df_hyomen[~is_so_huge].copy()
         y_pred = None
