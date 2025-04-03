@@ -56,7 +56,7 @@ async def calc_para_and_led(data: ImageData):
         image, binary = read_image(image)
         if image is None:
             raise HTTPException(status_code=400, detail="Invalid image data")
-        return calc_thin(image, binary, data.whole_hight_mm, data.url)
+        return calc_thin(image, binary, data.whole_hight_mm, data.url, predict_led=False)
 
     except Exception as e:
         logger.error(f"Error calc Para: {e}")
