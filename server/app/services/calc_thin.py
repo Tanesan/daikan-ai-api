@@ -255,11 +255,22 @@ def calc_thin(image, binary, whole_height_mm, url, predict_led=False) -> WholeIm
         perimages=reset_index_data
     )
     
-    if predict_led and MINIMAL_MODEL_AVAILABLE:
+    if predict_led:
         try:
             features_df = extract_features_from_params(reset_index_data)
             
-            led_predictions = predict_led_with_minimal_model(features_df)
+            led_predictions = None
+            try:
+                from app.services.led_database.enhanced_models.predict_with_enhanced_models import predict_led_with_enhanced_models
+                led_predictions = predict_led_with_enhanced_models(features_df)
+                logger.info("改良モデルでLED予測を実行しました")
+            except Exception as e:
+                logger.warning(f"改良モデルでの予測に失敗しました: {e}")
+                logger.warning("最小限フィルタリングモデルにフォールバックします")
+                
+            if not led_predictions and MINIMAL_MODEL_AVAILABLE:
+                led_predictions = predict_led_with_minimal_model(features_df)
+                logger.info("最小限フィルタリングモデルでLED予測を実行しました")
             
             if led_predictions:
                 from app.models.led_output import WholeImageParameterWithLED, PerImageParameterWithLED, LuminousModel
