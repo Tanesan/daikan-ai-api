@@ -6,6 +6,7 @@ from sklearn.metrics import mean_absolute_percentage_error
 import os
 import joblib
 import matplotlib.pyplot as plt
+from app.services.led_database.enhanced_models.column_definitions import standardize_dataframe
 
 def weighted_rmse_obj(preds, dtrain):
     """
@@ -123,8 +124,10 @@ def train_all_models(df, output_dir='../enhanced_models/models'):
             print(f"セグメント {segment} のデータ数が不足しています ({len(segment_df)} < 30)。スキップします。")
             continue
         
-        X = segment_df.drop(['led', 'pj', 'segment', 'distance', 'processed_path'], axis=1, errors='ignore')
-        y = segment_df['led']
+        standardized_df = standardize_dataframe(segment_df, for_training=True)
+        
+        X = standardized_df.drop(['led'], axis=1)
+        y = standardized_df['led']
         
         X = X.select_dtypes(include=['number'])
         

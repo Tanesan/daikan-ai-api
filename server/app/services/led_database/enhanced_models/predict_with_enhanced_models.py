@@ -5,6 +5,7 @@ import xgboost as xgb
 import logging
 from app.services.led_database.enhanced_models.data_segmentation import segment_by_size_and_complexity
 from app.services.led_database.enhanced_models.enhanced_features import enhance_features_for_large_signs
+from app.services.led_database.enhanced_models.column_definitions import standardize_dataframe
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -66,8 +67,11 @@ class EnhancedLEDPredictor:
                     segment = self._find_closest_segment(segment)
                     model = self.models[segment]
                 
-                features = row.drop(['segment', 'distance', 'size_segment', 'complexity', 
-                                     'emission_type'], errors='ignore')
+                row_df = pd.DataFrame([row])
+                standardized_row = standardize_dataframe(row_df)
+                
+                features = standardized_row.drop(['segment', 'distance', 'size_segment', 'complexity', 
+                                     'emission_type'], axis=1, errors='ignore')
                 features = features.select_dtypes(include=['number'])
                 
                 dfeatures = xgb.DMatrix([features])
