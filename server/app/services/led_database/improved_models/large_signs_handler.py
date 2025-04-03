@@ -24,8 +24,10 @@ def enhance_large_sign_features(df_huge):
     
     df_enhanced['skeleton_area_ratio'] = df_enhanced['skeleton_length'] / np.sqrt(df_enhanced['Area'])
     df_enhanced['area_perimeter_normalized'] = df_enhanced['Area'] / (df_enhanced['Peri'] ** 2)
+    df_enhanced['width_to_length_ratio'] = np.sqrt(df_enhanced['Area']) / df_enhanced['skeleton_length']
+    df_enhanced['perimeter_skeleton_ratio'] = df_enhanced['Peri'] / df_enhanced['skeleton_length']
     
-    df_enhanced['led_density_estimate'] = df_enhanced['Area'] / 200  # 大型看板のLED密度仮定
+    df_enhanced['led_density_estimate'] = df_enhanced['Area'] / 180  # 大型看板のLED密度仮定を調整
     
     if 'intersection3' in df_enhanced.columns and 'endpoint' in df_enhanced.columns:
         df_enhanced['complexity_score'] = (df_enhanced['intersection3'] + 2 * df_enhanced.get('intersection4', 0)) / (df_enhanced['endpoint'] + 1)

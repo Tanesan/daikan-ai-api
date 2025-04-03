@@ -507,13 +507,13 @@ def predict_led_with_minimal_model(df, scale_ratio=1.0):
             df_enhanced['area_skeleton_ratio'] = df_enhanced['Area'] / (df_enhanced['skeleton_length'] ** 2)
             df_enhanced['peri_area_ratio'] = df_enhanced['Peri'] / np.sqrt(df_enhanced['Area'])
             
-            is_huge = ((df_enhanced['Area'] > 20000) & (df_enhanced['endpoint'] >= 15)) | (df_enhanced['Area'] > 40000)
+            is_huge = ((df_enhanced['Area'] > 15000) & (df_enhanced['endpoint'] >= 12)) | (df_enhanced['Area'] > 30000)
             
             model = xgb.XGBRegressor()
             model.load_model(minimal_model_path)
             
             expected_feature_order = [
-                'skeleton_length', 'scale_ratio', 'intersection3', 'intersection4', 
+                'skeleton_length', 'intersection3', 'intersection4', 
                 'intersection5', 'intersection6', 'endpoint', 'Area', 'Peri', 
                 'distance_average', 'area_per_skeleton', 'peri_per_skeleton', 
                 'area_per_peri', 'led_density_area', 'led_density_skeleton', 
