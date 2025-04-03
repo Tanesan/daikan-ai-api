@@ -1,8 +1,14 @@
+"""
+Enhanced LED prediction module using segmented models.
+
+This module provides functionality to predict LED counts using specialized models
+for different sign segments, with fallback mechanisms for robustness.
+"""
 import os
+import logging
 import pandas as pd
 import numpy as np
 import xgboost as xgb
-import logging
 from app.services.led_database.enhanced_models.data_segmentation import segment_by_size_and_complexity
 from app.services.led_database.enhanced_models.enhanced_features import enhance_features_for_large_signs
 from app.services.led_database.enhanced_models.column_definitions import standardize_dataframe
@@ -19,7 +25,10 @@ class EnhancedLEDPredictor:
     
     def load_models(self):
         """
-        ディレクトリから全てのモデルを読み込む
+        Load all models from the models directory.
+        
+        Reads the model_results.csv file to get model paths and loads each model.
+        Logs warnings for missing model files.
         """
         try:
             results_path = os.path.join(self.models_dir, 'model_results.csv')
@@ -41,12 +50,18 @@ class EnhancedLEDPredictor:
                 logger.info(f"合計 {len(self.models)} モデルをロードしました")
             else:
                 logger.warning(f"モデル結果ファイルが見つかりません: {results_path}")
-        except Exception as e:
-            logger.error(f"モデルのロード中にエラーが発生しました: {e}")
+        except Exception as exc:
+            logger.error(f"モデルのロード中にエラーが発生しました: {exc}")
     
     def predict(self, features_df):
         """
-        適切なモデルを使用してLED数を予測
+        Predict LED counts using appropriate models.
+        
+        Args:
+            features_df: DataFrame containing sign features
+            
+        Returns:
+            Dictionary mapping sign indices to predicted LED counts
         """
         try:
             if not self.models:
@@ -122,14 +137,20 @@ class EnhancedLEDPredictor:
             
             return predictions
         
-        except Exception as e:
-            logger.error(f"予測中にエラーが発生しました: {e}")
-            logger.exception(e)
+        except Exception as exc:
+            logger.error(f"予測中にエラーが発生しました: {exc}")
+            logger.exception(exc)
             return {}
     
     def _find_closest_segment(self, segment):
         """
-        指定されたセグメントに最も近いセグメントを見つける
+        Find the closest matching segment from available models.
+        
+        Args:
+            segment: The segment name to find a match for
+            
+        Returns:
+            The name of the closest matching segment or "default"
         """
         parts = segment.split('_')
         
@@ -159,7 +180,13 @@ predictor = None
 
 def predict_led_with_enhanced_models(features_df):
     """
-    改良されたモデルを使用してLEDの数を予測
+    Predict LED counts using enhanced models.
+    
+    Args:
+        features_df: DataFrame containing sign features
+        
+    Returns:
+        Dictionary mapping sign indices to predicted LED counts
     """
     global predictor
     

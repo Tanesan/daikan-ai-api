@@ -1,15 +1,30 @@
+"""
+Data segmentation module for LED prediction models.
+
+This module provides functionality to segment sign data based on size,
+complexity, and emission type for specialized model training and prediction.
+"""
 import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
 
 def segment_by_size_and_complexity(df):
     """
-    看板を以下のセグメントに分割：
+    Segment signs based on size, complexity, and emission type.
+    
+    Categorizes signs into the following segments:
     - small: Area <= 5000
     - medium: 5000 < Area <= 20000
     - large: 20000 < Area <= 40000 
     - very_large: Area > 40000
+    
+    Additionally, categorizes by complexity (simple/complex) based on zunguri value
+    and emission type (neon/hyomen) based on distance_average.
+    
+    Args:
+        df: DataFrame containing sign parameters
+        
+    Returns:
+        DataFrame with additional columns for segmentation
     """
     df_copy = df.copy()
     
