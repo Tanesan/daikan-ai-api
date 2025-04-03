@@ -156,7 +156,7 @@ def create_optimized_dataset():
 
 def train_and_evaluate_model(df):
     """モデルを訓練して評価する関数"""
-    features = [col for col in df.columns if col not in ['led', 'index', 'pj', 'led_per_area', 'led_per_skeleton', 'predicted_led', 'rel_error']]
+    features = [col for col in df.columns if col not in ['led', 'index', 'pj', 'led_per_area', 'led_per_skeleton', 'predicted_led', 'rel_error', 'scale_ratio']]
     
     train_df, test_df = train_test_split(df, test_size=0.2, random_state=42)
     print(f"訓練データ: {train_df.shape[0]}件, テストデータ: {test_df.shape[0]}件")
