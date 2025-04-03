@@ -1,3 +1,9 @@
+"""
+Test module for column order standardization.
+
+This module tests the column order standardization functionality to ensure
+consistent column ordering between training and prediction phases.
+"""
 import os
 import sys
 import pandas as pd
@@ -17,9 +23,29 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class MockPerImageParameter:
+    """
+    Mock class for PerImageParameter to test feature extraction.
+    
+    This class mimics the structure of the PerImageParameter class used in
+    the actual application, allowing for testing without real image data.
+    """
     def __init__(self, area, peri, skeleton_length, distance, 
                  intersection_count3, intersection_count4, 
                  intersection_count5, intersection_count6, endpoints_count):
+        """
+        Initialize a mock parameter object with sign characteristics.
+        
+        Args:
+            area: Sign area
+            peri: Sign perimeter
+            skeleton_length: Length of the skeleton
+            distance: List of distances
+            intersection_count3: Count of 3-way intersections
+            intersection_count4: Count of 4-way intersections
+            intersection_count5: Count of 5-way intersections
+            intersection_count6: Count of 6-way intersections
+            endpoints_count: Count of endpoints
+        """
         self.area = area
         self.peri = peri
         self.skeleton_length = skeleton_length
@@ -31,6 +57,16 @@ class MockPerImageParameter:
         self.endpoints_count = endpoints_count
 
 def test_column_order():
+    """
+    Test column order standardization for both training and prediction.
+    
+    Creates mock sign data, processes it through the feature extraction,
+    segmentation, and feature engineering pipeline, then tests if the
+    standardized column order matches the expected order.
+    
+    Returns:
+        bool: True if all tests pass, False otherwise
+    """
     mock_perimages = {
         '1': MockPerImageParameter(
             area=5000, 
