@@ -43,15 +43,15 @@ class EnhancedLEDPredictor:
                         model = xgb.Booster()
                         model.load_model(model_path)
                         self.models[segment] = model
-                        logger.info(f"モデルをロードしました: {segment}")
+                        logger.info(f"Model loaded: {segment}")
                     else:
-                        logger.warning(f"モデルファイルが見つかりません: {model_path}")
+                        logger.warning(f"Model file not found: {model_path}")
                 
-                logger.info(f"合計 {len(self.models)} モデルをロードしました")
+                logger.info(f"Total {len(self.models)} models loaded")
             else:
-                logger.warning(f"モデル結果ファイルが見つかりません: {results_path}")
+                logger.warning(f"Model results file not found: {results_path}")
         except Exception as exc:
-            logger.error(f"モデルのロード中にエラーが発生しました: {exc}")
+            logger.error(f"Error occurred while loading models: {exc}")
     
     def predict(self, features_df):
         """
@@ -65,13 +65,13 @@ class EnhancedLEDPredictor:
         """
         try:
             if not self.models:
-                logger.warning("モデルがロードされていません。デフォルト予測を使用します。")
+                logger.warning("No models loaded. Using default prediction.")
                 predictions = {}
                 for idx, row in features_df.iterrows():
                     area = row['Area']
                     skeleton_length = row['skeleton_length']
                     
-                    led_count = int(skeleton_length / 15)  # 15mmピッチを仮定
+                    led_count = int(skeleton_length / 15)  # Assuming 15mm pitch
                     
                     if area > 40000:
                         led_count *= 2.8
@@ -127,10 +127,10 @@ class EnhancedLEDPredictor:
                 
                 if 'very_large' in segment:
                     if prediction > 200:
-                        prediction *= 2.8  # 実測値の約1/3との報告に基づく補正
+                        prediction *= 2.8  # Correction based on report of actual values being about 3x predictions
                 elif 'large' in segment:
                     if prediction > 100:
-                        prediction *= 1.5  # 大型看板に対する補正
+                        prediction *= 1.5  # Correction for large signs
                 
                 key = str(int(row.get('index', idx)))
                 predictions[key] = round(prediction)
@@ -138,7 +138,7 @@ class EnhancedLEDPredictor:
             return predictions
         
         except Exception as exc:
-            logger.error(f"予測中にエラーが発生しました: {exc}")
+            logger.error(f"Error occurred during prediction: {exc}")
             logger.exception(exc)
             return {}
     
@@ -157,7 +157,7 @@ class EnhancedLEDPredictor:
         available_segments = list(self.models.keys())
         
         if not available_segments:
-            logger.warning("利用可能なモデルがありません。デフォルト値を使用します。")
+            logger.warning("No available models. Using default value.")
             return "default"
         
         if len(parts) >= 3:
