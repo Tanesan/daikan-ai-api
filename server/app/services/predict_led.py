@@ -329,10 +329,26 @@ def predict_led(area, peri, distance, skeleton_length, scale_ratio, intersection
     }])
     
     if MINIMAL_MODEL_AVAILABLE:
-        minimal_prediction = predict_with_minimal_model(df)
-        if minimal_prediction is not None:
-            logger.info("最小限フィルタリングモデルで予測しました")
-            return minimal_prediction
+        try:
+            features_df = df.copy()
+            
+            try:
+                from app.services.led_database.enhanced_models.predict_with_enhanced_models import predict_led_with_enhanced_models
+                led_predictions = predict_led_with_enhanced_models(features_df)
+                if led_predictions:
+                    logger.info("改良モデルでLED予測を実行しました")
+                    return led_predictions['0']
+            except Exception as e:
+                logger.warning(f"改良モデルでの予測に失敗しました: {e}")
+                logger.warning("最小限フィルタリングモデルにフォールバックします")
+            
+            minimal_prediction = predict_with_minimal_model(df)
+            if minimal_prediction is not None:
+                logger.info("最小限フィルタリングモデルで予測しました")
+                return minimal_prediction
+        except Exception as e:
+            logger.error(f"LED予測中にエラーが発生しました: {e}")
+            logger.exception(e)
 
     if condition.name.lower() == "uramen":
         df = preprocess(df)
