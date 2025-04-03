@@ -255,11 +255,11 @@ def calc_thin(image, binary, whole_height_mm, url, predict_led=False) -> WholeIm
         perimages=reset_index_data
     )
     
-    if predict_led and IMPROVED_MODELS_AVAILABLE:
+    if predict_led and MINIMAL_MODEL_AVAILABLE:
         try:
             features_df = extract_features_from_params(reset_index_data)
             
-            led_predictions = predict_led_with_improved_models(features_df)
+            led_predictions = predict_led_with_minimal_model(features_df)
             
             if led_predictions:
                 from app.models.led_output import WholeImageParameterWithLED, PerImageParameterWithLED, LuminousModel
@@ -290,19 +290,13 @@ from io import BytesIO
 from urllib.parse import urlparse, unquote
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-improved_models_path = os.path.join(current_dir, 'led_database', 'improved_models')
-sys.path.append(improved_models_path)
+minimal_model_path = os.path.join(current_dir, 'led_database', 'improved_models', 'models', 'minimal_filtered_model.json')
 
-try:
-    from improved_models.enhanced_features import enhance_features, enhance_skeleton_topology
-    from improved_models.data_segmentation import segment_data
-    from improved_models.model_architecture import create_ensemble_model, predict_with_ensemble
-    from improved_models.large_signs_handler import enhance_large_sign_features, build_specialized_large_sign_model
-    IMPROVED_MODELS_AVAILABLE = True
-    logger.info("改良されたモデルをロードしました")
-except ImportError as e:
-    logger.warning(f"改良されたモデルのインポートに失敗しました: {e}")
-    IMPROVED_MODELS_AVAILABLE = False
+MINIMAL_MODEL_AVAILABLE = os.path.exists(minimal_model_path)
+if MINIMAL_MODEL_AVAILABLE:
+    logger.info("最小限フィルタリングモデルが利用可能です")
+else:
+    logger.warning("最小限フィルタリングモデルが見つかりません")
 def save_image_to_s3(image, s3_path):
     try:
         # URL解析でパス部分を抽出
@@ -474,48 +468,43 @@ def extract_features_from_params(perimages):
     
     return pd.DataFrame(features_list)
 
-def predict_led_with_improved_models(df):
+def predict_led_with_minimal_model(df):
     """
-    改良されたモデルを使用してLEDの数を予測する関数
+    最小限フィルタリングモデルを使用してLEDの数を予測する関数
     """
-    if not IMPROVED_MODELS_AVAILABLE:
-        logger.warning("改良されたモデルが利用できないため、予測できません")
+    if not MINIMAL_MODEL_AVAILABLE:
+        logger.warning("最小限フィルタリングモデルが利用できないため、予測できません")
         return None
     
-    df_enhanced = enhance_features(df)
-    
-    df_enhanced = enhance_skeleton_topology(df_enhanced)
-    
-    segments = segment_data(df_enhanced)
-    
-    predictions = {}
-    
-    if 'large_signs' in segments and not segments['large_signs'].empty:
-        large_df = enhance_large_sign_features(segments['large_signs'])
-        large_model_path = os.path.join(current_dir, 'led_database', 'improved_models', 'models', 'large_sign_model.json')
+    try:
+        predictions = {}
         
-        if os.path.exists(large_model_path):
-            model = xgb.Booster()
-            model.load_model(large_model_path)
+        for _, row in df.iterrows():
+            df_enhanced = pd.DataFrame([row])
             
-            X_large = large_df[[col for col in large_df.columns if col != 'led' and col != 'index']]
-            dmatrix = xgb.DMatrix(X_large)
-            large_preds = model.predict(dmatrix)
+            df_enhanced['area_per_skeleton'] = df_enhanced['Area'] / df_enhanced['skeleton_length']
+            df_enhanced['peri_per_skeleton'] = df_enhanced['Peri'] / df_enhanced['skeleton_length']
+            df_enhanced['area_per_peri'] = df_enhanced['Area'] / df_enhanced['Peri']
             
-            for i, idx in enumerate(large_df['index']):
-                predictions[str(idx)] = round(large_preds[i])
-    
-    if 'normal_signs' in segments and not segments['normal_signs'].empty:
-        normal_df = segments['normal_signs']
-        ensemble_model_path = os.path.join(current_dir, 'led_database', 'improved_models', 'models', 'ensemble_model.pkl')
+            df_enhanced['area_skeleton_ratio'] = df_enhanced['Area'] / (df_enhanced['skeleton_length'] ** 2)
+            df_enhanced['peri_area_ratio'] = df_enhanced['Peri'] / np.sqrt(df_enhanced['Area'])
+            
+            is_huge = ((df_enhanced['Area'] > 20000) & (df_enhanced['endpoint'] >= 15)) | (df_enhanced['Area'] > 40000)
+            
+            model = xgb.XGBRegressor()
+            model.load_model(minimal_model_path)
+            
+            features = [col for col in df_enhanced.columns if col not in ['led', 'index']]
+            available_features = [col for col in features if col in df_enhanced.columns]
+            
+            X = df_enhanced[available_features]
+            prediction = model.predict(X)
+            
+            idx = str(int(row['index']))
+            predictions[idx] = round(prediction[0])
         
-        if os.path.exists(ensemble_model_path):
-            model = joblib.load(ensemble_model_path)
-            
-            X_normal = normal_df[[col for col in normal_df.columns if col != 'led' and col != 'index']]
-            normal_preds = model.predict(X_normal)
-            
-            for i, idx in enumerate(normal_df['index']):
-                predictions[str(idx)] = round(normal_preds[i])
-    
-    return predictions
+        return predictions
+    except Exception as e:
+        logger.error(f"最小限フィルタリングモデルでの予測中にエラーが発生しました: {e}")
+        logger.exception(e)
+        return None
