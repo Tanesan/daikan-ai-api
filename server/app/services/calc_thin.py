@@ -259,7 +259,7 @@ def calc_thin(image, binary, whole_height_mm, url, predict_led=False) -> WholeIm
         try:
             features_df = extract_features_from_params(reset_index_data)
             
-            led_predictions = predict_led_with_minimal_model(features_df)
+            led_predictions = predict_led_with_minimal_model(features_df, scale_ratio=scale_ratio)
             
             if led_predictions:
                 from app.models.led_output import WholeImageParameterWithLED, PerImageParameterWithLED, LuminousModel
@@ -468,9 +468,16 @@ def extract_features_from_params(perimages):
     
     return pd.DataFrame(features_list)
 
-def predict_led_with_minimal_model(df):
+def predict_led_with_minimal_model(df, scale_ratio=1.0):
     """
     最小限フィルタリングモデルを使用してLEDの数を予測する関数
+    
+    Args:
+        df: 入力データフレーム
+        scale_ratio: スケール比率（デフォルト: 1.0）
+    
+    Returns:
+        予測されたLED数（整数）またはNone（エラー時）
     """
     if not MINIMAL_MODEL_AVAILABLE:
         logger.warning("最小限フィルタリングモデルが利用できないため、予測できません")
@@ -482,9 +489,20 @@ def predict_led_with_minimal_model(df):
         for _, row in df.iterrows():
             df_enhanced = pd.DataFrame([row])
             
+            df_enhanced['scale_ratio'] = scale_ratio
+            
             df_enhanced['area_per_skeleton'] = df_enhanced['Area'] / df_enhanced['skeleton_length']
             df_enhanced['peri_per_skeleton'] = df_enhanced['Peri'] / df_enhanced['skeleton_length']
             df_enhanced['area_per_peri'] = df_enhanced['Area'] / df_enhanced['Peri']
+            
+            if 'led' in df_enhanced.columns:
+                df_enhanced['led_density_area'] = df_enhanced['led'] / df_enhanced['Area']
+                df_enhanced['led_density_skeleton'] = df_enhanced['led'] / df_enhanced['skeleton_length']
+                df_enhanced['led_density_peri'] = df_enhanced['led'] / df_enhanced['Peri']
+            else:
+                df_enhanced['led_density_area'] = 0
+                df_enhanced['led_density_skeleton'] = 0
+                df_enhanced['led_density_peri'] = 0
             
             df_enhanced['area_skeleton_ratio'] = df_enhanced['Area'] / (df_enhanced['skeleton_length'] ** 2)
             df_enhanced['peri_area_ratio'] = df_enhanced['Peri'] / np.sqrt(df_enhanced['Area'])
@@ -494,10 +512,18 @@ def predict_led_with_minimal_model(df):
             model = xgb.XGBRegressor()
             model.load_model(minimal_model_path)
             
-            features = [col for col in df_enhanced.columns if col not in ['led', 'index']]
-            available_features = [col for col in features if col in df_enhanced.columns]
+            expected_feature_order = [
+                'skeleton_length', 'scale_ratio', 'intersection3', 'intersection4', 
+                'intersection5', 'intersection6', 'endpoint', 'Area', 'Peri', 
+                'distance_average', 'area_per_skeleton', 'peri_per_skeleton', 
+                'area_per_peri', 'led_density_area', 'led_density_skeleton', 
+                'led_density_peri', 'area_skeleton_ratio', 'peri_area_ratio'
+            ]
+            
+            available_features = [f for f in expected_feature_order if f in df_enhanced.columns]
             
             X = df_enhanced[available_features]
+            logger.info(f"予測に使用する特徴量: {X.columns.tolist()}")
             prediction = model.predict(X)
             
             idx = str(int(row['index']))
