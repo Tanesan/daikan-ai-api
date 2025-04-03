@@ -49,6 +49,25 @@ class EnhancedLEDPredictor:
         適切なモデルを使用してLED数を予測
         """
         try:
+            if not self.models:
+                logger.warning("モデルがロードされていません。デフォルト予測を使用します。")
+                predictions = {}
+                for idx, row in features_df.iterrows():
+                    area = row['Area']
+                    skeleton_length = row['skeleton_length']
+                    
+                    led_count = int(skeleton_length / 15)  # 15mmピッチを仮定
+                    
+                    if area > 40000:
+                        led_count *= 2.8
+                    elif area > 20000:
+                        led_count *= 1.5
+                    
+                    key = str(int(row.get('index', idx)))
+                    predictions[key] = max(1, round(led_count))
+                
+                return predictions
+            
             if 'zunguri' not in features_df.columns:
                 features_df['zunguri'] = features_df['Area'] / (features_df['Peri'] + 1e-5)
             
@@ -65,6 +84,20 @@ class EnhancedLEDPredictor:
                     model = self.models[segment]
                 else:
                     segment = self._find_closest_segment(segment)
+                    if segment == "default" or segment not in self.models:
+                        area = row['Area']
+                        skeleton_length = row['skeleton_length']
+                        led_count = int(skeleton_length / 15)
+                        
+                        if area > 40000:
+                            led_count *= 2.8
+                        elif area > 20000:
+                            led_count *= 1.5
+                        
+                        key = str(int(row.get('index', idx)))
+                        predictions[key] = max(1, round(led_count))
+                        continue
+                    
                     model = self.models[segment]
                 
                 row_df = pd.DataFrame([row])
@@ -91,6 +124,7 @@ class EnhancedLEDPredictor:
         
         except Exception as e:
             logger.error(f"予測中にエラーが発生しました: {e}")
+            logger.exception(e)
             return {}
     
     def _find_closest_segment(self, segment):
@@ -100,6 +134,10 @@ class EnhancedLEDPredictor:
         parts = segment.split('_')
         
         available_segments = list(self.models.keys())
+        
+        if not available_segments:
+            logger.warning("利用可能なモデルがありません。デフォルト値を使用します。")
+            return "default"
         
         if len(parts) >= 3:
             emission_type = parts[0]
